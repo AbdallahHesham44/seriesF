@@ -644,11 +644,11 @@ def main():
     operation = st.selectbox(
         "Select what you want to do:",
         [
-            "1 - Update MasterSeriesHistory.xlsx",
+            "1 - Compare Series",
             "2 - Delete from MasterSeriesHistory.xlsx", 
             "3 - Update SampleSeriesRules.xlsx",
             "4 - Delete from SampleSeriesRules.xlsx",
-            "5 - Compare Series"
+            "5 - Update MasterSeriesHistory.xlsx"
         ]
     )
 
@@ -672,7 +672,7 @@ def main():
             # Execute operation based on selection
             if st.button("🚀 Execute Operation", type="primary"):
                 with st.spinner("Processing..."):
-                    if operation.startswith("1"):
+                    if operation.startswith("5"):
                         # Update Master Series History
                         st.subheader("📝 Updating Master Series History")
                         updated_master, updated_count, appended_count = update_master_series_logic(uploaded_df, master_df.copy())
@@ -818,7 +818,7 @@ def main():
                         else:
                             st.warning("Please confirm deletion to proceed")
 
-                    elif operation.startswith("5"):
+                    elif operation.startswith("1"):
                         # Compare Series
                         st.subheader("🔍 Comparing Series")
                         
