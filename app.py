@@ -23,6 +23,59 @@ RULES_FILE_PATH   = "SampleSeriesRules.xlsx"
 # ──────────────────────────────────────────────────────────────────────────────
 # NEW: helpers for pushing to GitHub (replace old update_github_file)
 # ──────────────────────────────────────────────────────────────────────────────
+
+
+# Helper function to create template files
+def generate_template(template_type: str):
+    if template_type == "MasterSeriesHistory":
+        df = pd.DataFrame({
+            "VariantID": [],
+            "ManufacturerName": [],
+            "Category": [],
+            "Family": [],
+            "DataSheetURL": [],
+            "RequestedSeries": []
+        })
+    elif template_type == "SampleSeriesRules":
+        df = pd.DataFrame({
+            "ManufacturerName": [],
+            "Category": [],
+            "Family": [],
+            "Rule": []
+        })
+    else:
+        df = pd.DataFrame()
+    return df
+
+def template_tab():
+    st.header("📥 Download Templates")
+
+    st.markdown("Choose which template you want to download. These templates will help you prepare your data in the correct format.")
+
+    # MasterSeriesHistory template
+    master_df = generate_template("MasterSeriesHistory")
+    buf_master = io.BytesIO()
+    master_df.to_excel(buf_master, index=False, engine="openpyxl")
+
+    st.download_button(
+        label="📥 Download MasterSeriesHistory Template",
+        data=buf_master.getvalue(),
+        file_name="MasterSeriesHistory_Template.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+    # SampleSeriesRules template
+    rules_df = generate_template("SampleSeriesRules")
+    buf_rules = io.BytesIO()
+    rules_df.to_excel(buf_rules, index=False, engine="openpyxl")
+
+    st.download_button(
+        label="📥 Download SampleSeriesRules Template",
+        data=buf_rules.getvalue(),
+        file_name="SampleSeriesRules_Template.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
 def df_to_xlsx_bytes(df: pd.DataFrame) -> bytes:
     buf = io.BytesIO()
     df.to_excel(buf, index=False, engine='openpyxl')
@@ -617,108 +670,73 @@ def main():
         page_icon="🔍",
         layout="wide"
     )
+
+    tab1, tab2 = st.tabs(["🔍 Operations", "📥 Download Templates"])
+    with tab1:
+        st.title("🔍 Enhanced Series Comparison Tool")
+        st.markdown("Compare series data with CRUD operations support")
+        
+        # Apply repo/paths from secrets (lets you change owner/repo/paths without code edits)
+        _apply_repo_config_from_secrets()
     
-    st.title("🔍 Enhanced Series Comparison Tool")
-    st.markdown("Compare series data with CRUD operations support")
+        # Token from secrets
+        github_token = _get_github_token_from_secrets()
     
-    # Apply repo/paths from secrets (lets you change owner/repo/paths without code edits)
-    _apply_repo_config_from_secrets()
-
-    # Token from secrets
-    github_token = _get_github_token_from_secrets()
-
-    # Load master files from GitHub
-    with st.spinner("Loading master files from GitHub..."):
-        master_df = load_file_from_github(MASTER_URL)
-        rules_df  = load_file_from_github(RULES_URL)
-
-    if master_df is None or rules_df is None:
-        st.error("Failed to load master files from GitHub")
-        st.stop()
-
-    st.success(f"✅ Loaded Master Series History: {len(master_df)} rows")
-    st.success(f"✅ Loaded Series Rules: {len(rules_df)} rows")
-
-    # Operation selection
-    st.header("📋 Choose Operation")
-    operation = st.selectbox(
-        "Select what you want to do:",
-        [
-            "1 - Compare Series",
-            "2 - Delete from MasterSeriesHistory.xlsx", 
-            "3 - Update SampleSeriesRules.xlsx",
-            "4 - Delete from SampleSeriesRules.xlsx",
-            "5 - Update MasterSeriesHistory.xlsx"
-        ]
-    )
-
-    # File upload section
-    st.header("📁 Upload File")
-    uploaded_file = st.file_uploader(
-        "Upload your Excel file",
-        type=['xlsx', 'xls'],
-        help="Upload the file containing data for your selected operation"
-    )
-
-    if uploaded_file is not None:
-        try:
-            uploaded_df = pd.read_excel(uploaded_file, engine='openpyxl')
-            st.success(f"✅ File uploaded successfully: {len(uploaded_df)} rows")
-            
-            # Show preview of uploaded data
-            st.subheader("📊 Data Preview")
-            st.dataframe(uploaded_df.head(), use_container_width=True)
-
-            # Execute operation based on selection
-            if st.button("🚀 Execute Operation", type="primary"):
-                with st.spinner("Processing..."):
-                    if operation.startswith("5"):
-                        # Update Master Series History
-                        st.subheader("📝 Updating Master Series History")
-                        updated_master, updated_count, appended_count = update_master_series_logic(uploaded_df, master_df.copy())
-                        
-                        if updated_master is not None:
-                            st.success(f"✅ Update completed!")
-                            st.info(f"📊 Updated existing rows: {updated_count}")
-                            st.info(f"📊 Appended new rows: {appended_count}")
-                            st.info(f"📊 Total rows: {len(updated_master)}")
-                            
-                            # Create download buttons and stage GitHub payload
-                            col1, col2 = st.columns(2)
-                            
-                            with col1:
-                                # Download button
-                                output = io.BytesIO()
-                                updated_master.to_excel(output, index=False, engine='openpyxl')
-                                st.download_button(
-                                    label="💾 Download Updated Master Series",
-                                    data=output.getvalue(),
-                                    file_name=f"Updated_MasterSeriesHistory_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                                )
-                            
-                            with col2:
-                                # Stage payload for global push section
-                                st.session_state["gh_payload"] = {
-                                    "bytes": df_to_xlsx_bytes(updated_master),
-                                    "path": MASTER_FILE_PATH,  # ← from secrets if set
-                                    "message": f"Update MasterSeriesHistory - {updated_count} updated, {appended_count} new rows",
-                                }
-                                st.success("✅ Push payload prepared (see '🚀 Push to GitHub' section below).")
-
-                    elif operation.startswith("2"):
-                        # Delete from Master Series History
-                        st.subheader("🗑️ Deleting from Master Series History")
-                        st.warning("⚠️ This will permanently delete matching rows!")
-                        
-                        confirm = st.checkbox("I confirm I want to delete these rows")
-                        if confirm:
-                            updated_master, deleted_count = delete_from_master_series_logic(uploaded_df, master_df.copy())
+        # Load master files from GitHub
+        with st.spinner("Loading master files from GitHub..."):
+            master_df = load_file_from_github(MASTER_URL)
+            rules_df  = load_file_from_github(RULES_URL)
+    
+        if master_df is None or rules_df is None:
+            st.error("Failed to load master files from GitHub")
+            st.stop()
+    
+        st.success(f"✅ Loaded Master Series History: {len(master_df)} rows")
+        st.success(f"✅ Loaded Series Rules: {len(rules_df)} rows")
+    
+        # Operation selection
+        st.header("📋 Choose Operation")
+        operation = st.selectbox(
+            "Select what you want to do:",
+            [
+                "1 - Compare Series",
+                "2 - Delete from MasterSeriesHistory.xlsx", 
+                "3 - Update SampleSeriesRules.xlsx",
+                "4 - Delete from SampleSeriesRules.xlsx",
+                "5 - Update MasterSeriesHistory.xlsx"
+            ]
+        )
+    
+        # File upload section
+        st.header("📁 Upload File")
+        uploaded_file = st.file_uploader(
+            "Upload your Excel file",
+            type=['xlsx', 'xls'],
+            help="Upload the file containing data for your selected operation"
+        )
+    
+        if uploaded_file is not None:
+            try:
+                uploaded_df = pd.read_excel(uploaded_file, engine='openpyxl')
+                st.success(f"✅ File uploaded successfully: {len(uploaded_df)} rows")
+                
+                # Show preview of uploaded data
+                st.subheader("📊 Data Preview")
+                st.dataframe(uploaded_df.head(), use_container_width=True)
+    
+                # Execute operation based on selection
+                if st.button("🚀 Execute Operation", type="primary"):
+                    with st.spinner("Processing..."):
+                        if operation.startswith("5"):
+                            # Update Master Series History
+                            st.subheader("📝 Updating Master Series History")
+                            updated_master, updated_count, appended_count = update_master_series_logic(uploaded_df, master_df.copy())
                             
                             if updated_master is not None:
-                                st.success(f"✅ Deletion completed!")
-                                st.info(f"🗑️ Deleted rows: {deleted_count}")
-                                st.info(f"📊 Remaining rows: {len(updated_master)}")
+                                st.success(f"✅ Update completed!")
+                                st.info(f"📊 Updated existing rows: {updated_count}")
+                                st.info(f"📊 Appended new rows: {appended_count}")
+                                st.info(f"📊 Total rows: {len(updated_master)}")
                                 
                                 # Create download buttons and stage GitHub payload
                                 col1, col2 = st.columns(2)
@@ -730,7 +748,7 @@ def main():
                                     st.download_button(
                                         label="💾 Download Updated Master Series",
                                         data=output.getvalue(),
-                                        file_name=f"Deleted_MasterSeriesHistory_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                                        file_name=f"Updated_MasterSeriesHistory_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                                     )
                                 
@@ -739,59 +757,59 @@ def main():
                                     st.session_state["gh_payload"] = {
                                         "bytes": df_to_xlsx_bytes(updated_master),
                                         "path": MASTER_FILE_PATH,  # ← from secrets if set
-                                        "message": f"Delete from MasterSeriesHistory - {deleted_count} rows deleted",
+                                        "message": f"Update MasterSeriesHistory - {updated_count} updated, {appended_count} new rows",
                                     }
                                     st.success("✅ Push payload prepared (see '🚀 Push to GitHub' section below).")
-                        else:
-                            st.warning("Please confirm deletion to proceed")
-
-                    elif operation.startswith("3"):
-                        # Update Series Rules
-                        st.subheader("📝 Updating Series Rules")
-                        updated_rules, updated_count, appended_count = update_series_rules_logic(uploaded_df, rules_df.copy())
-                        
-                        if updated_rules is not None:
-                            st.success(f"✅ Update completed!")
-                            st.info(f"📊 Updated existing rules: {updated_count}")
-                            st.info(f"📊 Appended new rules: {appended_count}")
-                            st.info(f"📊 Total rules: {len(updated_rules)}")
+    
+                        elif operation.startswith("2"):
+                            # Delete from Master Series History
+                            st.subheader("🗑️ Deleting from Master Series History")
+                            st.warning("⚠️ This will permanently delete matching rows!")
                             
-                            # Create download buttons and stage GitHub payload
-                            col1, col2 = st.columns(2)
-                            
-                            with col1:
-                                # Download button
-                                output = io.BytesIO()
-                                updated_rules.to_excel(output, index=False, engine='openpyxl')
-                                st.download_button(
-                                    label="💾 Download Updated Series Rules",
-                                    data=output.getvalue(),
-                                    file_name=f"Updated_SeriesRules_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                                )
-                            
-                            with col2:
-                                # Stage payload for global push section
-                                st.session_state["gh_payload"] = {
-                                    "bytes": df_to_xlsx_bytes(updated_rules),
-                                    "path": RULES_FILE_PATH,  # ← from secrets if set
-                                    "message": f"Update SeriesRules - {updated_count} updated, {appended_count} new rules",
-                                }
-                                st.success("✅ Push payload prepared (see '🚀 Push to GitHub' section below).")
-
-                    elif operation.startswith("4"):
-                        # Delete from Series Rules
-                        st.subheader("🗑️ Deleting from Series Rules")
-                        st.warning("⚠️ This will permanently delete matching rules!")
-                        
-                        confirm = st.checkbox("I confirm I want to delete these rules")
-                        if confirm:
-                            updated_rules, deleted_count = delete_from_series_rules_logic(uploaded_df, rules_df.copy())
+                            confirm = st.checkbox("I confirm I want to delete these rows")
+                            if confirm:
+                                updated_master, deleted_count = delete_from_master_series_logic(uploaded_df, master_df.copy())
+                                
+                                if updated_master is not None:
+                                    st.success(f"✅ Deletion completed!")
+                                    st.info(f"🗑️ Deleted rows: {deleted_count}")
+                                    st.info(f"📊 Remaining rows: {len(updated_master)}")
+                                    
+                                    # Create download buttons and stage GitHub payload
+                                    col1, col2 = st.columns(2)
+                                    
+                                    with col1:
+                                        # Download button
+                                        output = io.BytesIO()
+                                        updated_master.to_excel(output, index=False, engine='openpyxl')
+                                        st.download_button(
+                                            label="💾 Download Updated Master Series",
+                                            data=output.getvalue(),
+                                            file_name=f"Deleted_MasterSeriesHistory_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                                        )
+                                    
+                                    with col2:
+                                        # Stage payload for global push section
+                                        st.session_state["gh_payload"] = {
+                                            "bytes": df_to_xlsx_bytes(updated_master),
+                                            "path": MASTER_FILE_PATH,  # ← from secrets if set
+                                            "message": f"Delete from MasterSeriesHistory - {deleted_count} rows deleted",
+                                        }
+                                        st.success("✅ Push payload prepared (see '🚀 Push to GitHub' section below).")
+                            else:
+                                st.warning("Please confirm deletion to proceed")
+    
+                        elif operation.startswith("3"):
+                            # Update Series Rules
+                            st.subheader("📝 Updating Series Rules")
+                            updated_rules, updated_count, appended_count = update_series_rules_logic(uploaded_df, rules_df.copy())
                             
                             if updated_rules is not None:
-                                st.success(f"✅ Deletion completed!")
-                                st.info(f"🗑️ Deleted rules: {deleted_count}")
-                                st.info(f"📊 Remaining rules: {len(updated_rules)}")
+                                st.success(f"✅ Update completed!")
+                                st.info(f"📊 Updated existing rules: {updated_count}")
+                                st.info(f"📊 Appended new rules: {appended_count}")
+                                st.info(f"📊 Total rules: {len(updated_rules)}")
                                 
                                 # Create download buttons and stage GitHub payload
                                 col1, col2 = st.columns(2)
@@ -803,7 +821,7 @@ def main():
                                     st.download_button(
                                         label="💾 Download Updated Series Rules",
                                         data=output.getvalue(),
-                                        file_name=f"Deleted_SeriesRules_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                                        file_name=f"Updated_SeriesRules_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                                     )
                                 
@@ -812,163 +830,201 @@ def main():
                                     st.session_state["gh_payload"] = {
                                         "bytes": df_to_xlsx_bytes(updated_rules),
                                         "path": RULES_FILE_PATH,  # ← from secrets if set
-                                        "message": f"Delete from SeriesRules - {deleted_count} rules deleted",
+                                        "message": f"Update SeriesRules - {updated_count} updated, {appended_count} new rules",
                                     }
                                     st.success("✅ Push payload prepared (see '🚀 Push to GitHub' section below).")
-                        else:
-                            st.warning("Please confirm deletion to proceed")
-
-                    elif operation.startswith("1"):
-                        # Compare Series
-                        st.subheader("🔍 Comparing Series")
-                        
-                        # Options for comparison
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            use_rules = st.checkbox("Apply business rules", value=True)
-                        with col2:
-                            top_n = st.number_input("Top N most used series", min_value=1, max_value=10, value=2)
-                        
-                        # Perform comparison
-                        rules_to_use = rules_df if use_rules else None
-                        result_df = compare_series_logic(master_df.copy(), uploaded_df, rules_to_use, top_n)
-                        
-                        if result_df is not None:
-                            st.success(f"✅ Series comparison completed!")
-                            st.info(f"📊 Processed rows: {len(result_df)}")
+    
+                        elif operation.startswith("4"):
+                            # Delete from Series Rules
+                            st.subheader("🗑️ Deleting from Series Rules")
+                            st.warning("⚠️ This will permanently delete matching rules!")
                             
-                            # Show match summary
-                            st.subheader("📊 Match Summary")
-                            comment_counts = result_df['comments'].value_counts()
+                            confirm = st.checkbox("I confirm I want to delete these rules")
+                            if confirm:
+                                updated_rules, deleted_count = delete_from_series_rules_logic(uploaded_df, rules_df.copy())
+                                
+                                if updated_rules is not None:
+                                    st.success(f"✅ Deletion completed!")
+                                    st.info(f"🗑️ Deleted rules: {deleted_count}")
+                                    st.info(f"📊 Remaining rules: {len(updated_rules)}")
+                                    
+                                    # Create download buttons and stage GitHub payload
+                                    col1, col2 = st.columns(2)
+                                    
+                                    with col1:
+                                        # Download button
+                                        output = io.BytesIO()
+                                        updated_rules.to_excel(output, index=False, engine='openpyxl')
+                                        st.download_button(
+                                            label="💾 Download Updated Series Rules",
+                                            data=output.getvalue(),
+                                            file_name=f"Deleted_SeriesRules_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                                        )
+                                    
+                                    with col2:
+                                        # Stage payload for global push section
+                                        st.session_state["gh_payload"] = {
+                                            "bytes": df_to_xlsx_bytes(updated_rules),
+                                            "path": RULES_FILE_PATH,  # ← from secrets if set
+                                            "message": f"Delete from SeriesRules - {deleted_count} rules deleted",
+                                        }
+                                        st.success("✅ Push payload prepared (see '🚀 Push to GitHub' section below).")
+                            else:
+                                st.warning("Please confirm deletion to proceed")
+    
+                        elif operation.startswith("1"):
+                            # Compare Series
+                            st.subheader("🔍 Comparing Series")
                             
+                            # Options for comparison
                             col1, col2 = st.columns(2)
                             with col1:
-                                st.write("**Comment Distribution:**")
-                                for comment, count in comment_counts.items():
-                                    st.write(f"• {comment}: {count}")
-                            
+                                use_rules = st.checkbox("Apply business rules", value=True)
                             with col2:
-                                if 'major_Sim' in result_df.columns:
-                                    major_sim_counts = result_df['major_Sim'].value_counts().head(5)
-                                    st.write("**Top 5 Major_Sim Values:**")
-                                    for major_sim, count in major_sim_counts.items():
-                                        display_text = str(major_sim)[:50] + "..." if len(str(major_sim)) > 50 else str(major_sim)
-                                        st.write(f"• {display_text}: {count}")
+                                top_n = st.number_input("Top N most used series", min_value=1, max_value=10, value=2)
                             
-                            # Show results preview
-                            st.subheader("📋 Results Preview")
-                            st.dataframe(result_df.head(10), use_container_width=True)
+                            # Perform comparison
+                            rules_to_use = rules_df if use_rules else None
+                            result_df = compare_series_logic(master_df.copy(), uploaded_df, rules_to_use, top_n)
                             
-                            # Download button
-                            output = io.BytesIO()
-                            result_df.to_excel(output, index=False, engine='openpyxl')
-                            st.download_button(
-                                label="💾 Download Comparison Results",
-                                data=output.getvalue(),
-                                file_name=f"SeriesComparison_Results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                            )
-                            
-                            # Show detailed results in expandable section
-                            with st.expander("🔍 View Full Results"):
-                                st.dataframe(result_df, use_container_width=True)
-
-        except Exception as e:
-            st.error(f"Error processing file: {e}")
-
-    # ──────────────────────────────────────────────────────────────────────
-    # Single global Push-to-GitHub section (outside Execute button)
-    # ──────────────────────────────────────────────────────────────────────
-    st.header("🚀 Push to GitHub")
-    if "gh_payload" not in st.session_state:
-        st.info("Nothing queued to push yet. Execute an operation first.")
-    else:
-        payload = st.session_state["gh_payload"]
-        st.write(f"**Path:** `{payload['path']}`")
-        st.write(f"**Message:** {payload['message']}")
-        if github_token:
-            if st.button("Push now"):
-                with st.spinner("Pushing to GitHub..."):
-                    ok, msg = update_github_bytes(
-                        file_bytes=payload["bytes"],
-                        file_path=payload["path"],
-                        commit_message=payload["message"],
-                        github_token=github_token
-                    )
-                if ok:
-                    st.success(msg)
-                    # Optional: clear queued payload after successful push
-                    # st.session_state.pop("gh_payload", None)
-                else:
-                    st.error(msg)
-
-    # Information section
-    st.header("ℹ️ Required File Formats")
+                            if result_df is not None:
+                                st.success(f"✅ Series comparison completed!")
+                                st.info(f"📊 Processed rows: {len(result_df)}")
+                                
+                                # Show match summary
+                                st.subheader("📊 Match Summary")
+                                comment_counts = result_df['comments'].value_counts()
+                                
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    st.write("**Comment Distribution:**")
+                                    for comment, count in comment_counts.items():
+                                        st.write(f"• {comment}: {count}")
+                                
+                                with col2:
+                                    if 'major_Sim' in result_df.columns:
+                                        major_sim_counts = result_df['major_Sim'].value_counts().head(5)
+                                        st.write("**Top 5 Major_Sim Values:**")
+                                        for major_sim, count in major_sim_counts.items():
+                                            display_text = str(major_sim)[:50] + "..." if len(str(major_sim)) > 50 else str(major_sim)
+                                            st.write(f"• {display_text}: {count}")
+                                
+                                # Show results preview
+                                st.subheader("📋 Results Preview")
+                                st.dataframe(result_df.head(10), use_container_width=True)
+                                
+                                # Download button
+                                output = io.BytesIO()
+                                result_df.to_excel(output, index=False, engine='openpyxl')
+                                st.download_button(
+                                    label="💾 Download Comparison Results",
+                                    data=output.getvalue(),
+                                    file_name=f"SeriesComparison_Results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                                )
+                                
+                                # Show detailed results in expandable section
+                                with st.expander("🔍 View Full Results"):
+                                    st.dataframe(result_df, use_container_width=True)
     
-    with st.expander("📋 Required Columns for Each Operation"):
-        st.markdown("""
-        **1. Update MasterSeriesHistory.xlsx:**
-        - VariantID
-        - ManufacturerName
-        - Category
-        - Family
-        - RequestedSeries
+            except Exception as e:
+                st.error(f"Error processing file: {e}")
+    
+        # ──────────────────────────────────────────────────────────────────────
+        # Single global Push-to-GitHub section (outside Execute button)
+        # ──────────────────────────────────────────────────────────────────────
+        st.header("🚀 Push to GitHub")
+        if "gh_payload" not in st.session_state:
+            st.info("Nothing queued to push yet. Execute an operation first.")
+        else:
+            payload = st.session_state["gh_payload"]
+            st.write(f"**Path:** `{payload['path']}`")
+            st.write(f"**Message:** {payload['message']}")
+            if github_token:
+                if st.button("Push now"):
+                    with st.spinner("Pushing to GitHub..."):
+                        ok, msg = update_github_bytes(
+                            file_bytes=payload["bytes"],
+                            file_path=payload["path"],
+                            commit_message=payload["message"],
+                            github_token=github_token
+                        )
+                    if ok:
+                        st.success(msg)
+                        # Optional: clear queued payload after successful push
+                        # st.session_state.pop("gh_payload", None)
+                    else:
+                        st.error(msg)
+    
+        # Information section
+        st.header("ℹ️ Required File Formats")
         
-        **2. Delete from MasterSeriesHistory.xlsx:**
-        - VariantID
-        - ManufacturerName
-        - Category
-        - Family
-        
-        **3. Update SampleSeriesRules.xlsx:**
-        - ManufacturerName
-        - Category
-        - Family
-        - Rule
-        
-        **4. Delete from SampleSeriesRules.xlsx:**
-        - ManufacturerName
-        - Category
-        - Family
-        
-        **5. Compare Series:**
-        - ManufacturerName
-        - Category
-        - Family
-        - RequestedSeries
-        """)
-
-    with st.expander("🔍 How Comparison Works"):
-        st.markdown("""
-        The comparison tool uses several matching strategies in order of priority:
-        
-        1. **Exact Match** (100%): Perfect case-sensitive match
-        2. **Case Sensitive Match** (100%): Same content, different case
-        3. **Normalized Match** (100%): Same after removing separators and case
-        4. **Containment Match**: One series contains the other
-        5. **Similarity Match**: ≥60% similarity using SequenceMatcher
-        
-        **Output Columns:**
-        - `comments`: Type of match found
-        - `MajorID`: Usage percentage in master data
-        - `FoundSeries`: The matching series from master data
-        - `MostUsedSeries`: Top N most frequently used series for this key
-        - `AllSimilarAbove85`: All series with ≥85% similarity
-        - `major_Sim`: Most frequent series that contains the requested series
-        - `similar_percentage`: Similarity score
-        """)
-
-    with st.expander("🔧 GitHub Integration Setup"):
-        st.markdown("""
-        **Add to your app secrets** (Settings → Secrets):
-        
-
-        The app will use these values automatically for pushes.
-        """)
-
-    # Footer
-    st.markdown("---")
-    st.markdown("🔧 **Enhanced Series Comparison Tool** - Built with Streamlit")
-
+        with st.expander("📋 Required Columns for Each Operation"):
+            st.markdown("""
+            **1. Update MasterSeriesHistory.xlsx:**
+            - VariantID
+            - ManufacturerName
+            - Category
+            - Family
+            - RequestedSeries
+            
+            **2. Delete from MasterSeriesHistory.xlsx:**
+            - VariantID
+            - ManufacturerName
+            - Category
+            - Family
+            
+            **3. Update SampleSeriesRules.xlsx:**
+            - ManufacturerName
+            - Category
+            - Family
+            - Rule
+            
+            **4. Delete from SampleSeriesRules.xlsx:**
+            - ManufacturerName
+            - Category
+            - Family
+            
+            **5. Compare Series:**
+            - ManufacturerName
+            - Category
+            - Family
+            - RequestedSeries
+            """)
+    
+        with st.expander("🔍 How Comparison Works"):
+            st.markdown("""
+            The comparison tool uses several matching strategies in order of priority:
+            
+            1. **Exact Match** (100%): Perfect case-sensitive match
+            2. **Case Sensitive Match** (100%): Same content, different case
+            3. **Normalized Match** (100%): Same after removing separators and case
+            4. **Containment Match**: One series contains the other
+            5. **Similarity Match**: ≥60% similarity using SequenceMatcher
+            
+            **Output Columns:**
+            - `comments`: Type of match found
+            - `MajorID`: Usage percentage in master data
+            - `FoundSeries`: The matching series from master data
+            - `MostUsedSeries`: Top N most frequently used series for this key
+            - `AllSimilarAbove85`: All series with ≥85% similarity
+            - `major_Sim`: Most frequent series that contains the requested series
+            - `similar_percentage`: Similarity score
+            """)
+    
+        with st.expander("🔧 GitHub Integration Setup"):
+            st.markdown("""
+            **Add to your app secrets** (Settings → Secrets):
+            
+    
+            The app will use these values automatically for pushes.
+            """)
+    
+        # Footer
+        st.markdown("---")
+        st.markdown("🔧 **Enhanced Series Comparison Tool** - Built with Streamlit")
+    with tab2:
+        template_tab()
 if __name__ == "__main__":
     main()
